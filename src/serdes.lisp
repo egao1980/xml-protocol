@@ -32,16 +32,14 @@
                  :underlying underlying :backend backend))
 
 (defmethod serdes-protocol:stream-encode-value ((stream xml-character-output-stream) value &key)
-  (backend-encode (serdes-protocol:stream-backend stream) value
-                  :stream (serdes-protocol:underlying-stream stream)
-                  :pretty nil)
+  (encode value :stream (serdes-protocol:underlying-stream stream) :pretty nil)
   value)
 
 (defmethod serdes-protocol:stream-decode-value ((stream xml-character-input-stream) &key)
   (let ((in (serdes-protocol:underlying-stream stream)))
     (if (null (peek-char nil in nil nil))
         :eof
-        (backend-decode (serdes-protocol:stream-backend stream) in))))
+        (decode in))))
 
 (defun use-xml-serdes-backend ()
   (let ((backend (make-xml-serdes-backend)))
