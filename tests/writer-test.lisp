@@ -1,0 +1,26 @@
+(in-package #:xml-protocol/tests)
+
+(deftest event-writer-roundtrip
+  (xml-backend-native:use-native-backend)
+  (let ((xml (with-output-to-string (s)
+               (with-event-writer (w s :pretty nil :declaration t)
+                 (let ((a (make-xml-element "a" nil)))
+                   (write-event w :start-document)
+                   (write-event w :start-element a)
+                   (write-event w :characters "hi")
+                   (write-event w :end-element a)
+                   (write-event w :end-document))))))
+    (ok (search "<a>" xml))
+    (ok (search "hi" xml))
+    (ok (search "</a>" xml))
+    (let ((doc (decode xml)))
+      (ok (string= "hi" (xml-element-text (document-root-element doc)))))))
+
+(deftest write-element-subtree
+  (xml-backend-native:use-native-backend)
+  (let* ((el (make-xml-element "n" '(("k" . "v")) "x"))
+         (xml (with-output-to-string (s)
+                (with-event-writer (w s :pretty nil)
+                  (write-event w el)))))
+    (ok (search "k=\"v\"" xml))
+    (ok (search "x" xml))))
