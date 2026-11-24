@@ -1,5 +1,5 @@
 (defsystem "xml-backend-native"
-  :version "0.1.0"
+  :version "0.1.1"
   :description "xml-protocol backend — first-party well-formed XML 1.0 pull + sink"
   :author "egao1980"
   :license "MIT"
