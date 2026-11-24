@@ -95,26 +95,55 @@
                      (push (%next parser) chars))))
       (coerce (nreverse chars) 'string))))
 
+(defun %xml-char-code-p (code)
+  "CODE is a Char of XML 1.0 (production [2]): #x9, #xA, #xD, #x20-#xD7FF,
+   #xE000-#xFFFD or #x10000-#x10FFFF; never a surrogate, #xFFFE, #xFFFF or
+   past #x10FFFF."
+  (and (< code char-code-limit)
+       (or (= code #x9) (= code #xA) (= code #xD)
+           (<= #x20 code #xD7FF)
+           (<= #xE000 code #xFFFD)
+           (<= #x10000 code #x10FFFF))))
+
+(defun %read-char-reference (parser)
+  "After &#: the code of the character reference [0-9]+; or x[0-9a-fA-F]+;
+   (production [66]), consumed. A digit of the wrong radix, no digits, no
+   ; or a code that is not an XML Char (the Legal Character constraint:
+   &#0;, a surrogate, past #x10FFFF) signals XML-WELL-FORMED-ERROR, as lxml
+   rejects them."
+  (let* ((hex (when (eql (%peek parser) #\x) (%next parser) t))
+         (radix (if hex 16 10))
+         (code 0)
+         (digits 0))
+    (loop for c = (%peek parser)
+          until (or (eq c :eof) (char= c #\;))
+          do (let ((d (digit-char-p c radix)))
+               (unless d
+                 (%fail parser 'xml-well-formed-error
+                        (format nil "bad character reference: ~s is not a ~:[decimal~;hex~] digit"
+                                c hex)))
+               (%next parser)
+               (incf digits)
+               ;; Capped, so a long run of digits never makes a bignum.
+               (setf code (min char-code-limit (+ (* code radix) d)))))
+    (unless (eql (%next parser) #\;)
+      (%fail parser 'xml-well-formed-error "unterminated character reference"))
+    (when (zerop digits)
+      (%fail parser 'xml-well-formed-error "bad character reference: no digits"))
+    (unless (%xml-char-code-p code)
+      (%fail parser 'xml-well-formed-error
+             (if (>= code char-code-limit)
+                 "character reference out of range (past #x10FFFF)"
+                 (format nil "character reference #x~x is not an XML character" code))))
+    code))
+
 (defun %read-entity (parser)
   (unless (eql (%next parser) #\&)
     (%fail parser 'xml-well-formed-error "expected '&'"))
   (if (eql (%peek parser) #\#)
       (progn
         (%next parser)
-        (let ((hex (eql (%peek parser) #\x)))
-          (when hex (%next parser))
-          (let ((digits '()))
-            (loop for c = (%peek parser)
-                  until (or (eq c :eof) (char= c #\;))
-                  do (push (%next parser) digits))
-            (unless (eql (%next parser) #\;)
-              (%fail parser 'xml-well-formed-error "unterminated character reference"))
-            (let ((code (ignore-errors
-                         (parse-integer (coerce (nreverse digits) 'string)
-                                        :radix (if hex 16 10)))))
-              (unless code
-                (%fail parser 'xml-well-formed-error "bad character reference"))
-              (string (code-char code))))))
+        (string (code-char (%read-char-reference parser))))
       (let ((name-chars '()))
         (loop for c = (%peek parser)
               until (or (eq c :eof) (char= c #\;))
@@ -123,16 +152,16 @@
           (%fail parser 'xml-entity-error "unterminated entity"))
         (let ((name (coerce (nreverse name-chars) 'string)))
           (cond
-            ((string= name "amp") "&")
-            ((string= name "lt") "<")
-            ((string= name "gt") ">")
-            ((string= name "quot") "\"")
-            ((string= name "apos") "'")
-            (t
-             (restart-case
-                 (%fail parser 'xml-entity-error
-                        (format nil "unknown entity &~A;" name))
-               (continue () :report "Skip the entity" ""))))))))
+           ((string= name "amp") "&")
+           ((string= name "lt") "<")
+           ((string= name "gt") ">")
+           ((string= name "quot") "\"")
+           ((string= name "apos") "'")
+           (t
+            (restart-case
+                (%fail parser 'xml-entity-error
+                       (format nil "unknown entity &~A;" name))
+              (continue () :report "Skip the entity" ""))))))))
 
 (defun %read-attrs (parser)
   (let ((acc '()))
