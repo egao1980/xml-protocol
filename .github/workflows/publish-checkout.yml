@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "OCI tag (empty → .asd :version)"
+        description: "OCI tag (empty → each .asd :version)"
         required: false
         default: ""
         type: string
@@ -16,8 +16,17 @@ on:
 
 jobs:
   publish:
+    # One package per .asd: without SYSTEM the reusable workflow publishes
+    # only xml-protocol and skips the sibling xml-backend-native.asd.
+    strategy:
+      fail-fast: false
+      matrix:
+        system:
+          - xml-protocol
+          - xml-backend-native
     uses: egao1980/cl-repository/.github/workflows/publish-source.yml@main
     with:
+      system: ${{ matrix.system }}
       version: ${{ inputs.version }}
       packager-version: ${{ inputs.packager_version }}
     permissions:
